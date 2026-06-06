@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useTasksCtx } from "@/components/TasksContext";
+import { parseTasks } from "@/lib/parse";
 import { useRouter } from "next/navigation";
 
 export default function CapturePage() {
@@ -13,7 +14,7 @@ export default function CapturePage() {
   const recRef = useRef<unknown>(null);
 
   function handleSave() {
-    const lines = text.split(/\n|[;,]/).map(l => l.trim()).filter(Boolean);
+    const lines = parseTasks(text);
     if (!lines.length) return;
     lines.forEach(addTask);
     setText("");
