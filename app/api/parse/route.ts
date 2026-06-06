@@ -5,8 +5,6 @@ import { NextResponse } from "next/server";
 // список конкретних, переформульованих задач. Ключ читається з env на сервері,
 // у браузер не потрапляє.
 
-const client = new Anthropic(); // читає ANTHROPIC_API_KEY з оточення
-
 const SYSTEM = `Ти — асистент-планувальник. Користувач диктує або пише потік думок українською (часто з помилками розпізнавання мовлення, без розділових знаків).
 
 Твоє завдання: перетворити цей потік на список окремих, конкретних, дієвих задач.
@@ -39,6 +37,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ tasks: [] });
     }
 
+    const client = new Anthropic(); // читає ANTHROPIC_API_KEY з оточення (лише в рантаймі)
     const response = await client.messages.create({
       model: "claude-haiku-4-5",
       max_tokens: 1024,
