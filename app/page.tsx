@@ -17,7 +17,8 @@ export default function CapturePage() {
   // Саме це лагодить втрату задач при диктовці на iOS.
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recRef = useRef<unknown>(null);
-  const baseTextRef = useRef("");
+  const baseTextRef = useRef("");        // текст, зафіксований із попередніх сесій
+  const sessionFinalRef = useRef("");    // фіналізоване в поточній сесії
   const manualStopRef = useRef(false);
 
   function setFieldValue(value: string) {
@@ -75,19 +76,24 @@ export default function CapturePage() {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rec.onresult = (e: any) => {
-      // Збираємо ВЕСЬ транскрипт цієї сесії (від 0), не покладаючись на isFinal.
-      let session = "";
-      for (let i = 0; i < e.results.length; i++) {
-        session += e.results[i][0].transcript + " ";
+      // Обробляємо лише НОВІ результати (від resultIndex). Фіналізовані одразу
+      // дописуємо в постійний накопичувач — тож навіть якщо iOS обріже свій
+      // буфер у довгій сесії, раніше сказане вже збережено.
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i];
+        if (r.isFinal) sessionFinalRef.current += r[0].transcript + " ";
+        else interim += r[0].transcript + " ";
       }
-      const combined = (baseTextRef.current + " " + session).trim();
+      const combined = (baseTextRef.current + " " + sessionFinalRef.current + " " + interim).trim();
       setFieldValue(combined);
     };
 
     rec.onend = () => {
-      // Фіксуємо весь поточний текст поля як базу — щоб наступна сесія
-      // ДОПИСУВАЛА, а не перезаписувала. Це і лагодить «лишається лише остання».
+      // Фіксуємо все показане (фінал + «хвіст» interim) як базу, скидаємо
+      // лічильник сесії — наступна сесія тільки ДОПИСУЄ.
       baseTextRef.current = (textareaRef.current?.value ?? "").trim();
+      sessionFinalRef.current = "";
       if (!manualStopRef.current) {
         startRecognition(); // тримаємо запис через паузи, поки не натиснуто «стоп»
       } else {
@@ -129,6 +135,7 @@ export default function CapturePage() {
 
     manualStopRef.current = false;
     baseTextRef.current = (textareaRef.current?.value ?? "").trim();
+    sessionFinalRef.current = "";
     startRecognition();
     setListening(true);
   }
