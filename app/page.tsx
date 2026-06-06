@@ -90,15 +90,12 @@ export default function CapturePage() {
     };
 
     rec.onend = () => {
-      // Фіксуємо все показане (фінал + «хвіст» interim) як базу, скидаємо
-      // лічильник сесії — наступна сесія тільки ДОПИСУЄ.
+      // БЕЗ авто-перезапуску (саме він збивав розпізнавання на iOS).
+      // Фіксуємо все показане як базу — якщо користувач натисне мікрофон
+      // ще раз, наступна сесія допише далі.
       baseTextRef.current = (textareaRef.current?.value ?? "").trim();
       sessionFinalRef.current = "";
-      if (!manualStopRef.current) {
-        startRecognition(); // тримаємо запис через паузи, поки не натиснуто «стоп»
-      } else {
-        setListening(false);
-      }
+      setListening(false);
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -108,7 +105,6 @@ export default function CapturePage() {
         setListening(false);
         alert("Дозвольте доступ до мікрофона, щоб користуватися кнопкою запису.");
       }
-      // no-speech / aborted — нормально, onend перезапустить
     };
 
     rec.start();
