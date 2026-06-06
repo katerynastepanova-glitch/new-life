@@ -9,12 +9,33 @@ export default function CapturePage() {
   const [text, setText] = useState("");
   const [listening, setListening] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [processing, setProcessing] = useState(false);
   const { addTask } = useTasksCtx();
   const router = useRouter();
   const recRef = useRef<unknown>(null);
 
-  function handleSave() {
-    const lines = parseTasks(text);
+  async function handleSave() {
+    if (!text.trim() || processing) return;
+    setProcessing(true);
+
+    // Спершу пробуємо AI-розбір; якщо недоступний — запасна евристика.
+    let lines: string[] = [];
+    try {
+      const res = await fetch("/api/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.tasks)) lines = data.tasks;
+      }
+    } catch {
+      // мережа недоступна — впадемо на евристику нижче
+    }
+    if (!lines.length) lines = parseTasks(text);
+
+    setProcessing(false);
     if (!lines.length) return;
     lines.forEach(addTask);
     setText("");
@@ -104,7 +125,7 @@ export default function CapturePage() {
 
         <button
           onClick={handleSave}
-          disabled={!text.trim()}
+          disabled={!text.trim() || processing}
           className="flex-1 rounded-2xl text-lg font-semibold transition-all active:scale-95"
           style={{
             height: 64,
@@ -112,7 +133,11 @@ export default function CapturePage() {
             color: text.trim() ? "#fff" : "#3d3d3d",
           }}
         >
-          {saved ? "✓ Збережено" : "Зберегти задачі →"}
+          {saved
+            ? "✓ Збережено"
+            : processing
+            ? "✨ Розбираю…"
+            : "Зберегти задачі →"}
         </button>
       </div>
     </div>
