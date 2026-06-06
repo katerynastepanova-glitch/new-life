@@ -5,44 +5,73 @@ import { useTasksCtx } from "@/components/TasksContext";
 import { parseTasks } from "@/lib/parse";
 import { useRouter } from "next/navigation";
 
+// iOS (будь-який браузер) — Web Speech зламаний/відсутній. Там покладаємось
+// на вбудовану диктовку клавіатури, що пише прямо в поле.
+function isIOS() {
+  if (typeof navigator === "undefined") return false;
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    // iPad на iPadOS прикидається Mac — ловимо за тач-екраном
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
 export default function CapturePage() {
-  const [text, setText] = useState("");
   const [listening, setListening] = useState(false);
   const [saved, setSaved] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [hasText, setHasText] = useState(false);
   const { addTask } = useTasksCtx();
   const router = useRouter();
-  const recRef = useRef<unknown>(null);
-  const baseTextRef = useRef("");     // текст до початку диктування
-  const finalRef = useRef("");        // накопичені фінальні фрагменти (через паузи)
-  const manualStopRef = useRef(false); // користувач сам натиснув «стоп»
+
+  // Поле НЕкероване: текст живе в DOM, React його не перемальовує.
+  // Саме це лагодить втрату задач при диктовці на iOS.
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const recRef = useRef<unknown>(null);
+  const baseTextRef = useRef("");
+  const finalRef = useRef("");
+  const manualStopRef = useRef(false);
+
+  function setFieldValue(value: string) {
+    if (textareaRef.current) textareaRef.current.value = value;
+    setHasText(!!value.trim());
+  }
 
   async function handleSave() {
-    if (!text.trim() || processing) return;
+    const raw = textareaRef.current?.value ?? "";
+    if (!raw.trim() || processing) return;
+
+    // якщо запис ще йде — зупиняємо перед збереженням
+    if (listening) {
+      manualStopRef.current = true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (recRef.current as any)?.stop();
+      setListening(false);
+    }
+
     setProcessing(true);
 
-    // Спершу пробуємо AI-розбір; якщо недоступний — запасна евристика.
+    // Спершу AI-розбір; якщо недоступний — запасна евристика.
     let lines: string[] = [];
     try {
       const res = await fetch("/api/parse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text: raw }),
       });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.tasks)) lines = data.tasks;
       }
     } catch {
-      // мережа недоступна — впадемо на евристику нижче
+      // мережа недоступна — впадемо на евристику
     }
-    if (!lines.length) lines = parseTasks(text);
+    if (!lines.length) lines = parseTasks(raw);
 
     setProcessing(false);
     if (!lines.length) return;
     lines.forEach(addTask);
-    setText("");
+    setFieldValue("");
     setSaved(true);
     setTimeout(() => { setSaved(false); router.push("/inbox"); }, 800);
   }
@@ -54,43 +83,44 @@ export default function CapturePage() {
     const rec = new SR() as any;
     rec.lang = "uk-UA";
     rec.continuous = true;
-    rec.interimResults = true; // ловимо проміжні результати, щоб нічого не губити
+    rec.interimResults = true;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rec.onresult = (e: any) => {
       let interim = "";
-      // обробляємо лише НОВІ результати (від resultIndex), без дублювання
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
         if (r.isFinal) finalRef.current += r[0].transcript + " ";
         else interim += r[0].transcript;
       }
       const combined = (baseTextRef.current + " " + finalRef.current + interim).trim();
-      setText(combined);
+      setFieldValue(combined);
     };
 
     rec.onend = () => {
-      // iOS зупиняє запис після кожної паузи — перезапускаємо, поки не натиснуто «стоп»
       if (!manualStopRef.current) {
         try { rec.start(); } catch { /* вже запущено */ }
       } else {
         setListening(false);
       }
     };
-    rec.onerror = () => { /* ігноруємо разові помилки, onend перезапустить */ };
+    rec.onerror = () => { /* onend перезапустить */ };
 
     rec.start();
     recRef.current = rec;
   }
 
-  function toggleMic() {
+  function handleMic() {
+    // На iPhone/iPad — не чіпаємо Web Speech, відкриваємо клавіатуру з її 🎤.
+    if (isIOS()) {
+      textareaRef.current?.focus();
+      return;
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) {
-      // Браузер без Web Speech (напр. Chrome на iOS) — відкриваємо клавіатуру,
-      // щоб користувач скористався вбудованою диктовкою (значок 🎤 на клавіатурі).
       textareaRef.current?.focus();
-      alert("Тут скористайтесь диктовкою клавіатури: натисніть 🎤 на клавіатурі телефона.");
       return;
     }
 
@@ -102,28 +132,30 @@ export default function CapturePage() {
       return;
     }
 
-    // нова сесія диктування: запамʼятовуємо поточний текст як базу
     manualStopRef.current = false;
-    baseTextRef.current = text.trim();
+    baseTextRef.current = (textareaRef.current?.value ?? "").trim();
     finalRef.current = "";
     startRecognition();
     setListening(true);
   }
+
+  const onIOS = typeof window !== "undefined" && isIOS();
 
   return (
     <div className="flex flex-col" style={{ height: "100dvh", paddingBottom: 80 }}>
       <div className="px-5 pt-6 pb-3">
         <h1 className="text-2xl font-bold" style={{ color: "#f5f5f5" }}>Що в голові?</h1>
         <p className="text-sm mt-1" style={{ color: "#6b7280" }}>
-          Диктуйте все підряд через 🎤 на клавіатурі або пишіть текстом — AI сам розкладе на задачі
+          {onIOS
+            ? "Натисніть мікрофон → потім 🎤 на клавіатурі й диктуйте все підряд. AI сам розкладе на задачі."
+            : "Диктуйте все підряд або пишіть текстом — AI сам розкладе на задачі."}
         </p>
       </div>
 
       <div className="flex-1 px-4 pb-4">
         <textarea
           ref={textareaRef}
-          value={text}
-          onChange={e => setText(e.target.value)}
+          onChange={(e) => setHasText(!!e.target.value.trim())}
           placeholder="Написати звіт, зателефонувати Олені, купити продукти…"
           className="w-full h-full rounded-2xl p-4 text-lg resize-none outline-none leading-relaxed"
           style={{ background: "#1a1a1a", color: "#f5f5f5", border: "1px solid #2a2a2a", caretColor: "#6366f1" }}
@@ -133,7 +165,7 @@ export default function CapturePage() {
 
       <div className="px-4 pb-4 flex gap-3">
         <button
-          onClick={toggleMic}
+          onClick={handleMic}
           className="flex items-center justify-center rounded-2xl transition-all active:scale-95"
           style={{
             width: 64, height: 64, flexShrink: 0,
@@ -163,12 +195,12 @@ export default function CapturePage() {
 
         <button
           onClick={handleSave}
-          disabled={!text.trim() || processing}
+          disabled={!hasText || processing}
           className="flex-1 rounded-2xl text-lg font-semibold transition-all active:scale-95"
           style={{
             height: 64,
-            background: saved ? "#16a34a" : text.trim() ? "#6366f1" : "#1e1e1e",
-            color: text.trim() ? "#fff" : "#3d3d3d",
+            background: saved ? "#16a34a" : hasText ? "#6366f1" : "#1e1e1e",
+            color: hasText ? "#fff" : "#3d3d3d",
           }}
         >
           {saved
