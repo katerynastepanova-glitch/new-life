@@ -16,6 +16,7 @@ export default function CapturePage() {
   const baseTextRef = useRef("");     // текст до початку диктування
   const finalRef = useRef("");        // накопичені фінальні фрагменти (через паузи)
   const manualStopRef = useRef(false); // користувач сам натиснув «стоп»
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   async function handleSave() {
     if (!text.trim() || processing) return;
@@ -85,7 +86,13 @@ export default function CapturePage() {
   function toggleMic() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) { alert("Ваш браузер не підтримує розпізнавання мовлення."); return; }
+    if (!SR) {
+      // Браузер без Web Speech (напр. Chrome на iOS) — відкриваємо клавіатуру,
+      // щоб користувач скористався вбудованою диктовкою (значок 🎤 на клавіатурі).
+      textareaRef.current?.focus();
+      alert("Тут скористайтесь диктовкою клавіатури: натисніть 🎤 на клавіатурі телефона.");
+      return;
+    }
 
     if (listening) {
       manualStopRef.current = true;
@@ -108,12 +115,13 @@ export default function CapturePage() {
       <div className="px-5 pt-6 pb-3">
         <h1 className="text-2xl font-bold" style={{ color: "#f5f5f5" }}>Що в голові?</h1>
         <p className="text-sm mt-1" style={{ color: "#6b7280" }}>
-          Пишіть усе підряд — через кому або з нового рядка
+          Диктуйте все підряд через 🎤 на клавіатурі або пишіть текстом — AI сам розкладе на задачі
         </p>
       </div>
 
       <div className="flex-1 px-4 pb-4">
         <textarea
+          ref={textareaRef}
           value={text}
           onChange={e => setText(e.target.value)}
           placeholder="Написати звіт, зателефонувати Олені, купити продукти…"
