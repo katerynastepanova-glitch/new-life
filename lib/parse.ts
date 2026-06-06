@@ -99,6 +99,14 @@ function trimLeading(task: string): string {
   return words.slice(start).join(" ");
 }
 
+// Чи складається фрагмент лише з допоміжних слів (тоді це не задача).
+function isAllFiller(task: string): boolean {
+  return task
+    .trim()
+    .split(/\s+/)
+    .every((w) => LEADING_FILLER.has(clean(w)) || CONNECTORS.has(clean(w)));
+}
+
 export function parseTasks(input: string): string[] {
   // 1) Спершу ділимо за явними роздільниками: новий рядок, кома, крапка з комою,
   //    крапка, маркери списку.
@@ -111,6 +119,7 @@ export function parseTasks(input: string): string[] {
   const tasks: string[] = [];
   for (const chunk of chunks) {
     for (const t of splitBlob(chunk)) {
+      if (isAllFiller(t)) continue; // відкидаємо "треба", "потім" тощо
       const cleaned = trimLeading(t).trim();
       if (cleaned) tasks.push(cleaned[0].toUpperCase() + cleaned.slice(1));
     }
