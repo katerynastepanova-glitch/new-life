@@ -20,10 +20,27 @@ html, body {
 }
 
 body {
-  background: var(--bg);
+  /* darker backdrop shows the phone frame on wide screens */
+  background: #000;
   color: var(--fg);
   font-family: system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Mobile frame: full-width on phones, centered phone-width on desktop */
+.app-shell {
+  max-width: 480px;
+  margin: 0 auto;
+  position: relative;
+  min-height: 100dvh;
+  background: var(--bg);
+}
+
+@media (min-width: 481px) {
+  .app-shell {
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+  }
 }
 
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }

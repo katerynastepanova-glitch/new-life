@@ -42,8 +42,15 @@ const tabs = [
 export default function BottomNav() {
   const pathname = usePathname();
   return (
-    <nav className="fixed bottom-0 left-0 right-0 safe-bottom z-50"
-      style={{ background: "#111", borderTop: "1px solid #2a2a2a" }}>
+    <nav className="fixed bottom-0 safe-bottom z-50"
+      style={{
+        background: "#111",
+        borderTop: "1px solid #2a2a2a",
+        left: "50%",
+        transform: "translateX(-50%)",
+        width: "100%",
+        maxWidth: 480,
+      }}>
       <div className="flex">
         {tabs.map(({ href, label, icon }) => {
           const on = href === "/" ? pathname === "/" : pathname.startsWith(href);

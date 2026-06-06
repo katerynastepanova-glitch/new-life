@@ -21,10 +21,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="uk">
       <body>
         <TasksProvider>
-          <main className="safe-top" style={{ minHeight: "100dvh", paddingBottom: 80, background: "#0f0f0f" }}>
-            {children}
-          </main>
-          <BottomNav />
+          <div className="app-shell">
+            <main className="safe-top" style={{ minHeight: "100dvh", paddingBottom: 80 }}>
+              {children}
+            </main>
+            <BottomNav />
+          </div>
         </TasksProvider>
       </body>
     </html>
