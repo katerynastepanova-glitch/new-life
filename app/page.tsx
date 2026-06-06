@@ -18,7 +18,6 @@ export default function CapturePage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recRef = useRef<unknown>(null);
   const baseTextRef = useRef("");
-  const finalRef = useRef("");
   const manualStopRef = useRef(false);
 
   function setFieldValue(value: string) {
@@ -71,28 +70,26 @@ export default function CapturePage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rec = new SR() as any;
     rec.lang = "uk-UA";
-    // continuous=false — iOS-дружній режим: одна фраза за сесію, далі
-    // перезапускаємо СВІЖИМ інстансом у onend. Найнадійніший шаблон на iPhone.
-    rec.continuous = false;
+    rec.continuous = true;
     rec.interimResults = true;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rec.onresult = (e: any) => {
-      let interim = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const r = e.results[i];
-        if (r.isFinal) finalRef.current += r[0].transcript + " ";
-        else interim += r[0].transcript;
+      // Збираємо ВЕСЬ транскрипт цієї сесії (від 0), не покладаючись на isFinal.
+      let session = "";
+      for (let i = 0; i < e.results.length; i++) {
+        session += e.results[i][0].transcript + " ";
       }
-      const combined = (baseTextRef.current + " " + finalRef.current + interim).trim();
+      const combined = (baseTextRef.current + " " + session).trim();
       setFieldValue(combined);
     };
 
     rec.onend = () => {
-      // поки користувач не натиснув «стоп» — запускаємо нову сесію (тримає
-      // диктування через паузи на iOS, де continuous ігнорується)
+      // Фіксуємо весь поточний текст поля як базу — щоб наступна сесія
+      // ДОПИСУВАЛА, а не перезаписувала. Це і лагодить «лишається лише остання».
+      baseTextRef.current = (textareaRef.current?.value ?? "").trim();
       if (!manualStopRef.current) {
-        startRecognition();
+        startRecognition(); // тримаємо запис через паузи, поки не натиснуто «стоп»
       } else {
         setListening(false);
       }
@@ -100,13 +97,12 @@ export default function CapturePage() {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rec.onerror = (ev: any) => {
-      // no-speech / aborted — нормально, onend перезапустить.
-      // відмова в доступі до мікрофона — зупиняємось і підказуємо.
       if (ev.error === "not-allowed" || ev.error === "service-not-allowed") {
         manualStopRef.current = true;
         setListening(false);
-        alert("Дозвольте доступ до мікрофона в налаштуваннях браузера, щоб користуватися кнопкою запису.");
+        alert("Дозвольте доступ до мікрофона, щоб користуватися кнопкою запису.");
       }
+      // no-speech / aborted — нормально, onend перезапустить
     };
 
     rec.start();
@@ -133,7 +129,6 @@ export default function CapturePage() {
 
     manualStopRef.current = false;
     baseTextRef.current = (textareaRef.current?.value ?? "").trim();
-    finalRef.current = "";
     startRecognition();
     setListening(true);
   }
