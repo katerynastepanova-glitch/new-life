@@ -5,17 +5,6 @@ import { useTasksCtx } from "@/components/TasksContext";
 import { parseTasks } from "@/lib/parse";
 import { useRouter } from "next/navigation";
 
-// iOS (будь-який браузер) — Web Speech зламаний/відсутній. Там покладаємось
-// на вбудовану диктовку клавіатури, що пише прямо в поле.
-function isIOS() {
-  if (typeof navigator === "undefined") return false;
-  return (
-    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    // iPad на iPadOS прикидається Mac — ловимо за тач-екраном
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
-  );
-}
-
 export default function CapturePage() {
   const [listening, setListening] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -82,7 +71,9 @@ export default function CapturePage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rec = new SR() as any;
     rec.lang = "uk-UA";
-    rec.continuous = true;
+    // continuous=false — iOS-дружній режим: одна фраза за сесію, далі
+    // перезапускаємо СВІЖИМ інстансом у onend. Найнадійніший шаблон на iPhone.
+    rec.continuous = false;
     rec.interimResults = true;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -98,27 +89,35 @@ export default function CapturePage() {
     };
 
     rec.onend = () => {
+      // поки користувач не натиснув «стоп» — запускаємо нову сесію (тримає
+      // диктування через паузи на iOS, де continuous ігнорується)
       if (!manualStopRef.current) {
-        try { rec.start(); } catch { /* вже запущено */ }
+        startRecognition();
       } else {
         setListening(false);
       }
     };
-    rec.onerror = () => { /* onend перезапустить */ };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rec.onerror = (ev: any) => {
+      // no-speech / aborted — нормально, onend перезапустить.
+      // відмова в доступі до мікрофона — зупиняємось і підказуємо.
+      if (ev.error === "not-allowed" || ev.error === "service-not-allowed") {
+        manualStopRef.current = true;
+        setListening(false);
+        alert("Дозвольте доступ до мікрофона в налаштуваннях браузера, щоб користуватися кнопкою запису.");
+      }
+    };
 
     rec.start();
     recRef.current = rec;
   }
 
   function handleMic() {
-    // На iPhone/iPad — не чіпаємо Web Speech, відкриваємо клавіатуру з її 🎤.
-    if (isIOS()) {
-      textareaRef.current?.focus();
-      return;
-    }
-
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    // Браузер без Web Speech (Chrome на iOS) — відкриваємо клавіатуру з її 🎤.
     if (!SR) {
       textareaRef.current?.focus();
       return;
@@ -139,16 +138,12 @@ export default function CapturePage() {
     setListening(true);
   }
 
-  const onIOS = typeof window !== "undefined" && isIOS();
-
   return (
     <div className="flex flex-col" style={{ height: "100dvh", paddingBottom: 80 }}>
       <div className="px-5 pt-6 pb-3">
         <h1 className="text-2xl font-bold" style={{ color: "#f5f5f5" }}>Що в голові?</h1>
         <p className="text-sm mt-1" style={{ color: "#6b7280" }}>
-          {onIOS
-            ? "Натисніть мікрофон → потім 🎤 на клавіатурі й диктуйте все підряд. AI сам розкладе на задачі."
-            : "Диктуйте все підряд або пишіть текстом — AI сам розкладе на задачі."}
+          Натисніть мікрофон і диктуйте все підряд (натисніть ще раз, щоб зупинити) — AI сам розкладе на задачі.
         </p>
       </div>
 
