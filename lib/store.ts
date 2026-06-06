@@ -18,7 +18,7 @@ function save(tasks: Task[]) {
 function makeTask(input: string | ParsedTask): Task {
   const p: ParsedTask =
     typeof input === "string"
-      ? { text: input, priority: "nice", estimateMin: null, deadline: null }
+      ? { text: input, category: "personal", priority: "normal", estimateMin: null, deadline: null }
       : input;
   return {
     id: crypto.randomUUID(),
@@ -26,7 +26,8 @@ function makeTask(input: string | ParsedTask): Task {
     done: false,
     inToday: false,
     createdAt: Date.now(),
-    priority: p.priority === "must" ? "must" : "nice",
+    category: p.category === "work" ? "work" : "personal",
+    priority: p.priority ?? "normal",
     estimateMin: p.estimateMin ?? null,
     deadline: p.deadline ?? null,
   };

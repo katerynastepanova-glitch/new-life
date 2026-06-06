@@ -10,8 +10,14 @@ function systemPrompt(today: string) {
 
 Для кожної задачі визнач:
 - title: коротке дієве формулювання ("Подзвонити в клініку"), виправляй очевидні помилки розпізнавання за змістом, прибирай вступні слова ("треба", "не забути")
-- priority: "must" якщо терміново/важливо, інакше "nice"
-- estimateMin: реалістична оцінка в хвилинах (ціле число)
+- category: "work" — усе, повʼязане з роботою (листи команді, робочі задачі, дзвінки клієнтам, звіти, зустрічі); "personal" — побут, покупки додому, їжа, запис до лікарів, квитки, родина, дозвілля
+- priority: одне з чотирьох —
+  • "critical" — потрібно зробити сьогодні
+  • "important" — можна виконати впродовж 2-3 днів
+  • "normal" — чекає на реалізацію впродовж 3-10 днів
+  • "backlog" — непріоритетна, радше ідея на майбутнє, без чіткого терміну
+  Якщо в тексті є явні маркери ("терміново", "сьогодні", "до завтра") — підвищуй пріоритет відповідно.
+- estimateMin: реалістична оцінка в хвилинах (ціле число) — це лише пропозиція, користувач підтвердить
 - deadline: дата у форматі YYYY-MM-DD, якщо в тексті є час/день (напр. "завтра", "у пʼятницю", "до 15-го"); інакше null
 
 Сьогодні: ${today}. Відштовхуйся від цієї дати, обчислюючи відносні дні ("завтра", "наступного вівторка").
@@ -27,11 +33,12 @@ const SCHEMA = {
         type: "object",
         properties: {
           title: { type: "string" },
-          priority: { type: "string", enum: ["must", "nice"] },
+          category: { type: "string", enum: ["work", "personal"] },
+          priority: { type: "string", enum: ["critical", "important", "normal", "backlog"] },
           estimateMin: { type: ["integer", "null"] },
           deadline: { type: ["string", "null"] },
         },
-        required: ["title", "priority", "estimateMin", "deadline"],
+        required: ["title", "category", "priority", "estimateMin", "deadline"],
         additionalProperties: false,
       },
     },
@@ -69,7 +76,10 @@ export async function POST(req: Request) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .map((t: any) => ({
         text: t.title.trim(),
-        priority: t.priority === "must" ? "must" : "nice",
+        category: t.category === "work" ? "work" : "personal",
+        priority: ["critical", "important", "normal", "backlog"].includes(t.priority)
+          ? t.priority
+          : "normal",
         estimateMin: typeof t.estimateMin === "number" ? t.estimateMin : null,
         deadline: typeof t.deadline === "string" ? t.deadline : null,
       }));

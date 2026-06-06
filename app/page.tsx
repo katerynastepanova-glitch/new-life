@@ -4,22 +4,28 @@ import { useState, useRef } from "react";
 import { useTasksCtx } from "@/components/TasksContext";
 import { parseTasks } from "@/lib/parse";
 import type { ParsedTask } from "@/lib/types";
+import { CategoryBadge, PriorityBadge, formatEstimate } from "@/components/TaskMeta";
 import { useRouter } from "next/navigation";
+
+// Рядок (евристика) → структурована задача з типовими значеннями.
+function toParsed(item: string | ParsedTask): ParsedTask {
+  if (typeof item !== "string") return item;
+  return { text: item, category: "personal", priority: "normal", estimateMin: 30, deadline: null };
+}
 
 export default function CapturePage() {
   const [listening, setListening] = useState(false);
   const [saved, setSaved] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [hasText, setHasText] = useState(false);
+  const [review, setReview] = useState<ParsedTask[] | null>(null); // екран підтвердження
   const { addTasks } = useTasksCtx();
   const router = useRouter();
 
-  // Поле НЕкероване: текст живе в DOM, React його не перемальовує.
-  // Саме це лагодить втрату задач при диктовці на iOS.
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recRef = useRef<unknown>(null);
-  const baseTextRef = useRef("");        // текст, зафіксований із попередніх сесій
-  const sessionFinalRef = useRef("");    // фіналізоване в поточній сесії
+  const baseTextRef = useRef("");
+  const sessionFinalRef = useRef("");
   const manualStopRef = useRef(false);
 
   function setFieldValue(value: string) {
@@ -31,7 +37,6 @@ export default function CapturePage() {
     const raw = textareaRef.current?.value ?? "";
     if (!raw.trim() || processing) return;
 
-    // якщо запис ще йде — зупиняємо перед збереженням
     if (listening) {
       manualStopRef.current = true;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -41,7 +46,6 @@ export default function CapturePage() {
 
     setProcessing(true);
 
-    // Спершу AI-розбір (структуровані задачі); якщо недоступний — евристика (рядки).
     let items: (string | ParsedTask)[] = [];
     try {
       const res = await fetch("/api/parse", {
@@ -54,16 +58,38 @@ export default function CapturePage() {
         if (Array.isArray(data.tasks)) items = data.tasks;
       }
     } catch {
-      // мережа недоступна — впадемо на евристику
+      // мережа недоступна — евристика
     }
     if (!items.length) items = parseTasks(raw);
 
     setProcessing(false);
     if (!items.length) return;
-    addTasks(items); // усі задачі одним оновленням — без втрат
+    // не зберігаємо одразу — показуємо екран підтвердження часу
+    setReview(items.map(toParsed));
+  }
+
+  // --- екран підтвердження ---
+  function adjustEstimate(i: number, delta: number) {
+    setReview((prev) => {
+      if (!prev) return prev;
+      const next = [...prev];
+      const cur = next[i].estimateMin ?? 0;
+      next[i] = { ...next[i], estimateMin: Math.max(5, cur + delta) };
+      return next;
+    });
+  }
+
+  function removeReviewItem(i: number) {
+    setReview((prev) => (prev ? prev.filter((_, idx) => idx !== i) : prev));
+  }
+
+  function confirmReview() {
+    if (!review || !review.length) return;
+    addTasks(review);
+    setReview(null);
     setFieldValue("");
     setSaved(true);
-    setTimeout(() => { setSaved(false); router.push("/inbox"); }, 800);
+    setTimeout(() => { setSaved(false); router.push("/inbox"); }, 600);
   }
 
   function startRecognition() {
@@ -77,9 +103,6 @@ export default function CapturePage() {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rec.onresult = (e: any) => {
-      // Обробляємо лише НОВІ результати (від resultIndex). Фіналізовані одразу
-      // дописуємо в постійний накопичувач — тож навіть якщо iOS обріже свій
-      // буфер у довгій сесії, раніше сказане вже збережено.
       let interim = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
@@ -91,9 +114,6 @@ export default function CapturePage() {
     };
 
     rec.onend = () => {
-      // БЕЗ авто-перезапуску (саме він збивав розпізнавання на iOS).
-      // Фіксуємо все показане як базу — якщо користувач натисне мікрофон
-      // ще раз, наступна сесія допише далі.
       baseTextRef.current = (textareaRef.current?.value ?? "").trim();
       sessionFinalRef.current = "";
       setListening(false);
@@ -115,12 +135,7 @@ export default function CapturePage() {
   function handleMic() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-    // Браузер без Web Speech (Chrome на iOS) — відкриваємо клавіатуру з її 🎤.
-    if (!SR) {
-      textareaRef.current?.focus();
-      return;
-    }
+    if (!SR) { textareaRef.current?.focus(); return; }
 
     if (listening) {
       manualStopRef.current = true;
@@ -137,6 +152,85 @@ export default function CapturePage() {
     setListening(true);
   }
 
+  // ===== Екран підтвердження часу =====
+  if (review) {
+    const total = review.reduce((s, t) => s + (t.estimateMin ?? 0), 0);
+    return (
+      <div className="flex flex-col" style={{ minHeight: "100dvh", paddingBottom: 80 }}>
+        <div className="px-5 pt-6 pb-3">
+          <h1 className="text-2xl font-bold" style={{ color: "#f5f5f5" }}>Перевірте час</h1>
+          <p className="text-sm mt-1" style={{ color: "#6b7280" }}>
+            Скоригуйте оцінку, якщо задача займе більше чи менше. Разом: {formatEstimate(total)}
+          </p>
+        </div>
+
+        <div className="flex-1 px-4 pb-4 flex flex-col gap-3">
+          {review.map((t, i) => (
+            <div key={i} className="rounded-2xl px-4 py-4"
+              style={{ background: "#1a1a1a", border: "1px solid #2a2a2a" }}>
+              <div className="flex items-start gap-2">
+                <span className="flex-1 text-base leading-snug" style={{ color: "#f5f5f5" }}>
+                  {t.text}
+                </span>
+                <button onClick={() => removeReviewItem(i)}
+                  className="shrink-0 rounded-lg flex items-center justify-center active:scale-95"
+                  style={{ width: 32, height: 32, background: "#1e1e1e", border: "1px solid #2a2a2a" }}
+                  aria-label="Прибрати">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 mt-2">
+                <CategoryBadge category={t.category} />
+                <PriorityBadge priority={t.priority} />
+                {t.deadline && (
+                  <span className="text-xs px-2 py-0.5 rounded-full"
+                    style={{ background: "#2a1e3a", color: "#c4b5fd" }}>
+                    📅 {t.deadline.slice(8, 10)}.{t.deadline.slice(5, 7)}
+                  </span>
+                )}
+              </div>
+
+              {/* регулятор часу */}
+              <div className="flex items-center gap-3 mt-3">
+                <span className="text-sm" style={{ color: "#6b7280" }}>Час:</span>
+                <button onClick={() => adjustEstimate(i, -15)}
+                  className="rounded-lg flex items-center justify-center text-xl active:scale-90"
+                  style={{ width: 40, height: 40, background: "#1e1e1e", border: "1px solid #2a2a2a", color: "#f5f5f5" }}>
+                  −
+                </button>
+                <span className="text-base font-semibold tabular-nums" style={{ color: "#f5f5f5", minWidth: 84, textAlign: "center" }}>
+                  {formatEstimate(t.estimateMin ?? 0)}
+                </span>
+                <button onClick={() => adjustEstimate(i, 15)}
+                  className="rounded-lg flex items-center justify-center text-xl active:scale-90"
+                  style={{ width: 40, height: 40, background: "#1e1e1e", border: "1px solid #2a2a2a", color: "#f5f5f5" }}>
+                  +
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="px-4 pb-4 flex gap-3">
+          <button onClick={() => setReview(null)}
+            className="rounded-2xl text-base font-medium active:scale-95"
+            style={{ height: 64, paddingInline: 20, background: "#1e1e1e", border: "1px solid #2a2a2a", color: "#9ca3af" }}>
+            Назад
+          </button>
+          <button onClick={confirmReview}
+            className="flex-1 rounded-2xl text-lg font-semibold active:scale-95"
+            style={{ height: 64, background: saved ? "#16a34a" : "#6366f1", color: "#fff" }}>
+            {saved ? "✓ Додано" : `Додати ${review.length} задач →`}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ===== Екран Capture =====
   return (
     <div className="flex flex-col" style={{ height: "100dvh", paddingBottom: 80 }}>
       <div className="px-5 pt-6 pb-3">
@@ -193,15 +287,11 @@ export default function CapturePage() {
           className="flex-1 rounded-2xl text-lg font-semibold transition-all active:scale-95"
           style={{
             height: 64,
-            background: saved ? "#16a34a" : hasText ? "#6366f1" : "#1e1e1e",
+            background: hasText ? "#6366f1" : "#1e1e1e",
             color: hasText ? "#fff" : "#3d3d3d",
           }}
         >
-          {saved
-            ? "✓ Збережено"
-            : processing
-            ? "✨ Розбираю…"
-            : "Зберегти задачі →"}
+          {processing ? "✨ Розбираю…" : "Розібрати задачі →"}
         </button>
       </div>
     </div>
