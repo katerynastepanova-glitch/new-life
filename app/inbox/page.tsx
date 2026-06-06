@@ -1,6 +1,7 @@
 "use client";
 
 import { useTasksCtx } from "@/components/TasksContext";
+import TaskMeta from "@/components/TaskMeta";
 
 export default function InboxPage() {
   const { tasks, toggleToday, deleteTask } = useTasksCtx();
@@ -33,9 +34,12 @@ export default function InboxPage() {
           <li key={task.id}
             className="rounded-2xl px-4 py-4 flex items-center gap-3"
             style={{ background: "#1a1a1a", border: "1px solid #2a2a2a" }}>
-            <span className="flex-1 text-base leading-snug" style={{ color: "#f5f5f5" }}>
-              {task.text}
-            </span>
+            <div className="flex-1 min-w-0">
+              <span className="text-base leading-snug" style={{ color: "#f5f5f5" }}>
+                {task.text}
+              </span>
+              <TaskMeta task={task} />
+            </div>
             <div className="flex gap-2 shrink-0">
               <button onClick={() => toggleToday(task.id)}
                 className="rounded-xl px-3 text-sm font-medium transition-all active:scale-95"

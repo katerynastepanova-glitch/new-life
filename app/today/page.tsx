@@ -1,6 +1,7 @@
 "use client";
 
 import { useTasksCtx } from "@/components/TasksContext";
+import TaskMeta from "@/components/TaskMeta";
 
 export default function TodayPage() {
   const { tasks, toggleDone, toggleToday } = useTasksCtx();
@@ -64,12 +65,15 @@ export default function TodayPage() {
               )}
             </button>
 
-            <span className="flex-1 text-base leading-snug" style={{
-              color: task.done ? "#4b4b4b" : "#f5f5f5",
-              textDecoration: task.done ? "line-through" : "none",
-            }}>
-              {task.text}
-            </span>
+            <div className="flex-1 min-w-0">
+              <span className="text-base leading-snug" style={{
+                color: task.done ? "#4b4b4b" : "#f5f5f5",
+                textDecoration: task.done ? "line-through" : "none",
+              }}>
+                {task.text}
+              </span>
+              {!task.done && <TaskMeta task={task} />}
+            </div>
 
             <button onClick={() => toggleToday(task.id)}
               className="shrink-0 rounded-xl flex items-center justify-center transition-all active:scale-95"

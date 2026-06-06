@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import type { Task } from "./types";
+import type { Task, ParsedTask } from "./types";
 
 const KEY = "new-life-tasks";
 
@@ -15,13 +15,20 @@ function save(tasks: Task[]) {
   localStorage.setItem(KEY, JSON.stringify(tasks));
 }
 
-function makeTask(text: string): Task {
+function makeTask(input: string | ParsedTask): Task {
+  const p: ParsedTask =
+    typeof input === "string"
+      ? { text: input, priority: "nice", estimateMin: null, deadline: null }
+      : input;
   return {
     id: crypto.randomUUID(),
-    text: text.trim(),
+    text: p.text.trim(),
     done: false,
     inToday: false,
     createdAt: Date.now(),
+    priority: p.priority === "must" ? "must" : "nice",
+    estimateMin: p.estimateMin ?? null,
+    deadline: p.deadline ?? null,
   };
 }
 
@@ -45,8 +52,11 @@ export function useTasks() {
   }, [mutate]);
 
   // Пакетне додавання — усі задачі одним оновленням (без втрат у циклі).
-  const addTasks = useCallback((texts: string[]) => {
-    const fresh = texts.map((t) => t.trim()).filter(Boolean).map(makeTask);
+  // Приймає або рядки, або структуровані задачі від парсера.
+  const addTasks = useCallback((items: (string | ParsedTask)[]) => {
+    const fresh = items
+      .filter((i) => (typeof i === "string" ? i.trim() : i.text?.trim()))
+      .map(makeTask);
     if (!fresh.length) return;
     mutate((prev) => [...fresh, ...prev]);
   }, [mutate]);

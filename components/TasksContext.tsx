@@ -2,12 +2,12 @@
 
 import { createContext, useContext } from "react";
 import { useTasks } from "@/lib/store";
-import type { Task } from "@/lib/types";
+import type { Task, ParsedTask } from "@/lib/types";
 
 interface Ctx {
   tasks: Task[];
   addTask: (text: string) => void;
-  addTasks: (texts: string[]) => void;
+  addTasks: (items: (string | ParsedTask)[]) => void;
   toggleDone: (id: string) => void;
   toggleToday: (id: string) => void;
   deleteTask: (id: string) => void;

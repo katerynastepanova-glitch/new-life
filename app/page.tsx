@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { useTasksCtx } from "@/components/TasksContext";
 import { parseTasks } from "@/lib/parse";
+import type { ParsedTask } from "@/lib/types";
 import { useRouter } from "next/navigation";
 
 export default function CapturePage() {
@@ -40,8 +41,8 @@ export default function CapturePage() {
 
     setProcessing(true);
 
-    // Спершу AI-розбір; якщо недоступний — запасна евристика.
-    let lines: string[] = [];
+    // Спершу AI-розбір (структуровані задачі); якщо недоступний — евристика (рядки).
+    let items: (string | ParsedTask)[] = [];
     try {
       const res = await fetch("/api/parse", {
         method: "POST",
@@ -50,16 +51,16 @@ export default function CapturePage() {
       });
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data.tasks)) lines = data.tasks;
+        if (Array.isArray(data.tasks)) items = data.tasks;
       }
     } catch {
       // мережа недоступна — впадемо на евристику
     }
-    if (!lines.length) lines = parseTasks(raw);
+    if (!items.length) items = parseTasks(raw);
 
     setProcessing(false);
-    if (!lines.length) return;
-    addTasks(lines); // усі задачі одним оновленням — без втрат
+    if (!items.length) return;
+    addTasks(items); // усі задачі одним оновленням — без втрат
     setFieldValue("");
     setSaved(true);
     setTimeout(() => { setSaved(false); router.push("/inbox"); }, 800);
