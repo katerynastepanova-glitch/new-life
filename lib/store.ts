@@ -15,35 +15,53 @@ function save(tasks: Task[]) {
   localStorage.setItem(KEY, JSON.stringify(tasks));
 }
 
+function makeTask(text: string): Task {
+  return {
+    id: crypto.randomUUID(),
+    text: text.trim(),
+    done: false,
+    inToday: false,
+    createdAt: Date.now(),
+  };
+}
+
 export function useTasks() {
   const [tasks, setTasks] = useState<Task[]>([]);
 
   useEffect(() => { setTasks(load()); }, []);
 
-  const update = useCallback((next: Task[]) => {
-    setTasks(next);
-    save(next);
+  // Усі мутації — через функціональне оновлення (prev => next), щоб не
+  // читати застарілий стан. Збереження в localStorage робимо тут же.
+  const mutate = useCallback((fn: (prev: Task[]) => Task[]) => {
+    setTasks((prev) => {
+      const next = fn(prev);
+      save(next);
+      return next;
+    });
   }, []);
 
   const addTask = useCallback((text: string) => {
-    const task: Task = {
-      id: crypto.randomUUID(),
-      text: text.trim(),
-      done: false,
-      inToday: false,
-      createdAt: Date.now(),
-    };
-    update([task, ...tasks]);
-  }, [tasks, update]);
+    mutate((prev) => [makeTask(text), ...prev]);
+  }, [mutate]);
 
-  const toggleDone   = useCallback((id: string) =>
-    update(tasks.map(t => t.id === id ? { ...t, done: !t.done } : t)), [tasks, update]);
+  // Пакетне додавання — усі задачі одним оновленням (без втрат у циклі).
+  const addTasks = useCallback((texts: string[]) => {
+    const fresh = texts.map((t) => t.trim()).filter(Boolean).map(makeTask);
+    if (!fresh.length) return;
+    mutate((prev) => [...fresh, ...prev]);
+  }, [mutate]);
 
-  const toggleToday  = useCallback((id: string) =>
-    update(tasks.map(t => t.id === id ? { ...t, inToday: !t.inToday } : t)), [tasks, update]);
+  const toggleDone = useCallback((id: string) => {
+    mutate((prev) => prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
+  }, [mutate]);
 
-  const deleteTask   = useCallback((id: string) =>
-    update(tasks.filter(t => t.id !== id)), [tasks, update]);
+  const toggleToday = useCallback((id: string) => {
+    mutate((prev) => prev.map((t) => (t.id === id ? { ...t, inToday: !t.inToday } : t)));
+  }, [mutate]);
 
-  return { tasks, addTask, toggleDone, toggleToday, deleteTask };
+  const deleteTask = useCallback((id: string) => {
+    mutate((prev) => prev.filter((t) => t.id !== id));
+  }, [mutate]);
+
+  return { tasks, addTask, addTasks, toggleDone, toggleToday, deleteTask };
 }

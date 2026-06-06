@@ -10,7 +10,7 @@ export default function CapturePage() {
   const [saved, setSaved] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [hasText, setHasText] = useState(false);
-  const { addTask } = useTasksCtx();
+  const { addTasks } = useTasksCtx();
   const router = useRouter();
 
   // Поле НЕкероване: текст живе в DOM, React його не перемальовує.
@@ -58,7 +58,7 @@ export default function CapturePage() {
 
     setProcessing(false);
     if (!lines.length) return;
-    lines.forEach(addTask);
+    addTasks(lines); // усі задачі одним оновленням — без втрат
     setFieldValue("");
     setSaved(true);
     setTimeout(() => { setSaved(false); router.push("/inbox"); }, 800);

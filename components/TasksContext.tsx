@@ -7,6 +7,7 @@ import type { Task } from "@/lib/types";
 interface Ctx {
   tasks: Task[];
   addTask: (text: string) => void;
+  addTasks: (texts: string[]) => void;
   toggleDone: (id: string) => void;
   toggleToday: (id: string) => void;
   deleteTask: (id: string) => void;
