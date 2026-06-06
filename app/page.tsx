@@ -13,6 +13,9 @@ export default function CapturePage() {
   const { addTask } = useTasksCtx();
   const router = useRouter();
   const recRef = useRef<unknown>(null);
+  const baseTextRef = useRef("");     // текст до початку диктування
+  const finalRef = useRef("");        // накопичені фінальні фрагменти (через паузи)
+  const manualStopRef = useRef(false); // користувач сам натиснув «стоп»
 
   async function handleSave() {
     if (!text.trim() || processing) return;
@@ -43,33 +46,60 @@ export default function CapturePage() {
     setTimeout(() => { setSaved(false); router.push("/inbox"); }, 800);
   }
 
+  function startRecognition() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rec = new SR() as any;
+    rec.lang = "uk-UA";
+    rec.continuous = true;
+    rec.interimResults = true; // ловимо проміжні результати, щоб нічого не губити
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rec.onresult = (e: any) => {
+      let interim = "";
+      // обробляємо лише НОВІ результати (від resultIndex), без дублювання
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i];
+        if (r.isFinal) finalRef.current += r[0].transcript + " ";
+        else interim += r[0].transcript;
+      }
+      const combined = (baseTextRef.current + " " + finalRef.current + interim).trim();
+      setText(combined);
+    };
+
+    rec.onend = () => {
+      // iOS зупиняє запис після кожної паузи — перезапускаємо, поки не натиснуто «стоп»
+      if (!manualStopRef.current) {
+        try { rec.start(); } catch { /* вже запущено */ }
+      } else {
+        setListening(false);
+      }
+    };
+    rec.onerror = () => { /* ігноруємо разові помилки, onend перезапустить */ };
+
+    rec.start();
+    recRef.current = rec;
+  }
+
   function toggleMic() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) { alert("Ваш браузер не підтримує розпізнавання мовлення."); return; }
 
     if (listening) {
+      manualStopRef.current = true;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (recRef.current as any)?.stop();
       setListening(false);
       return;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rec = new SR() as any;
-    rec.lang = "uk-UA";
-    rec.continuous = true;
-    rec.interimResults = false;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    rec.onresult = (e: any) => {
-      const t = Array.from(e.results as unknown[])
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .map((r: any) => r[0].transcript).join(" ");
-      setText(prev => prev ? prev + " " + t : t);
-    };
-    rec.onend = () => setListening(false);
-    rec.start();
-    recRef.current = rec;
+    // нова сесія диктування: запамʼятовуємо поточний текст як базу
+    manualStopRef.current = false;
+    baseTextRef.current = text.trim();
+    finalRef.current = "";
+    startRecognition();
     setListening(true);
   }
 
